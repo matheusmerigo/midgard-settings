@@ -1,4 +1,6 @@
 return {
+    ["Discord"] = "https://discord.gg/pW2X3GtveU",
+
     [9186719164] = { -- Sailor Piece
         ["Linkvertise"] = {
             Url = "https://ads.luarmor.net/get_key?for=Midgard-DaqFQyjrqCZy",
