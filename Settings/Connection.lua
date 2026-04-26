@@ -1,5 +1,6 @@
 --[[
-    Connection.lua - Universal event system for Luau / Roblox
+    Connection.lua
+    Universal event/signal utility for Luau / Roblox.
 
     Event API:
       :Connect(fn, priority?, tag?)    -> ConnectionObject
@@ -20,14 +21,22 @@
       :IsDestroyed()                   -> boolean
       :LinkToInstance(instance)        -> RBXScriptConnection
 
-      .MaxListeners = number
-      .SafeMode = boolean
-      .OnConnectionChanged = fn(kind, connObj)?
+    Event fields:
+      .MaxListeners                    -> number (0 = unlimited)
+      .SafeMode                        -> boolean (pcall each callback)
+      .OnConnectionChanged             -> fn(kind, connObj)?
 
     ConnectionObject API:
-      .Connected
-      .Tag
-      :Disconnect()
+      .Connected                       -> boolean
+      .Tag                             -> string?
+      :Disconnect()                    -> void
+
+    Notes:
+      - Higher priority runs first.
+      - Fire/FireDeferred use per-callback scheduling.
+      - FireImmediate/FireCollect are synchronous.
+      - Waiters are resumed on Fire, timeout, or Destroy.
+      - LinkToInstance uses Destroying when available, then falls back to AncestryChanged.
 ]]
 
 local type = type
@@ -52,6 +61,7 @@ local coRunning = coroutine.running
 local coYield = coroutine.yield
 local coResume = coroutine.resume
 
+-- Inserts a connection object by descending priority.
 local function insertSorted(list, connObj)
     local priority = connObj._Priority
     for i, existing in ipairs(list) do
@@ -63,6 +73,7 @@ local function insertSorted(list, connObj)
     tableInsert(list, connObj)
 end
 
+-- Executes a callback without allowing it to break the dispatch chain.
 local function callSafe(fn, ...)
     local ok, err = pcall(fn, ...)
     if not ok then
@@ -70,6 +81,7 @@ local function callSafe(fn, ...)
     end
 end
 
+-- Notifies optional listeners about connection lifecycle changes.
 local function notifyConnectionChanged(event, kind, connObj)
     local handler = event.OnConnectionChanged
     if type(handler) == "function" then
@@ -77,6 +89,7 @@ local function notifyConnectionChanged(event, kind, connObj)
     end
 end
 
+-- Removes a pending waiter from the waiter list.
 local function removeWaiter(waiters, waiter)
     for i = #waiters, 1, -1 do
         if waiters[i] == waiter then
@@ -87,6 +100,7 @@ local function removeWaiter(waiters, waiter)
     return false
 end
 
+-- Resumes a waiter only once, even if multiple paths race.
 local function resumeWaiter(waiter, ...)
     if waiter.Resumed then
         return
@@ -214,6 +228,7 @@ function Connection:Wait(timeout)
     return coYield()
 end
 
+-- Resumes all pending waiters with the provided payload.
 local function flushWaiters(self, ...)
     if #self._Waiters == 0 then
         return
@@ -227,6 +242,7 @@ local function flushWaiters(self, ...)
     end
 end
 
+-- Shared dispatcher for Fire variants.
 local function doFire(self, spawnFn, ...)
     if self._Destroyed or self._Paused then
         return
