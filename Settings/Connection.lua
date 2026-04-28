@@ -6,6 +6,7 @@
       :Connect(fn, priority?, tag?)    -> ConnectionObject
       :Once(fn, priority?, tag?)       -> ConnectionObject
       :ConnectTagged(tag, fn, pri?)    -> ConnectionObject
+      :GetConnectionsByTag(tag)        -> { ConnectionObject }
       :Wait(timeout?)                  -> ...args | nil, "timeout" | nil, "destroyed"
       :Fire(...)                       -> void
       :FireDeferred(...)               -> void
@@ -33,9 +34,11 @@
 
     Notes:
       - Higher priority runs first.
-      - Fire/FireDeferred use per-callback scheduling.
+      - Fire/FireDeferred use per-callback scheduling and clone callbacks for safe iteration.
       - FireImmediate/FireCollect are synchronous.
       - Waiters are resumed on Fire, timeout, or Destroy.
+      - Fire variants on destroyed events are no-op.
+      - SafeMode adds per-callback pcall overhead.
       - LinkToInstance uses Destroying when available, then falls back to AncestryChanged.
 ]]
 
@@ -85,7 +88,7 @@ end
 local function notifyConnectionChanged(event, kind, connObj)
     local handler = event.OnConnectionChanged
     if type(handler) == "function" then
-        taskSpawn(handler, kind, connObj)
+        taskDefer(handler, kind, connObj)
     end
 end
 
@@ -106,7 +109,13 @@ local function resumeWaiter(waiter, ...)
         return
     end
     waiter.Resumed = true
-    taskSpawn(coResume, waiter.Thread, ...)
+    local args = { ... }
+    taskSpawn(function()
+        local ok, err = coResume(waiter.Thread, tableUnpack(args))
+        if not ok then
+            warn("[Connection] Wait resume error: " .. tostring(err))
+        end
+    end)
 end
 
 local ConnectionObject = {}
@@ -250,6 +259,10 @@ local function doFire(self, spawnFn, ...)
 
     flushWaiters(self, ...)
 
+    if #self._Callbacks == 0 then
+        return
+    end
+
     local safeMode = self.SafeMode
     local snapshot = tableClone(self._Callbacks)
     local args = { ... }
@@ -277,14 +290,23 @@ local function doFire(self, spawnFn, ...)
 end
 
 function Connection:Fire(...)
+    if self._Destroyed then
+        return
+    end
     doFire(self, taskSpawn, ...)
 end
 
 function Connection:FireDeferred(...)
+    if self._Destroyed then
+        return
+    end
     doFire(self, taskDefer, ...)
 end
 
 function Connection:FireImmediate(...)
+    if self._Destroyed then
+        return
+    end
     doFire(self, nil, ...)
 end
 
@@ -305,6 +327,9 @@ function Connection:FireCollect(...)
             local fn = connObj._Callback
             if safeMode then
                 local ok, ret = pcall(fn, ...)
+                if not ok then
+                    warn("[Connection] FireCollect callback error: " .. tostring(ret))
+                end
                 tableInsert(results, ok and ret or nil)
             else
                 tableInsert(results, fn(...))
@@ -348,6 +373,20 @@ function Connection:DisconnectByTag(tag)
             notifyConnectionChanged(self, "disconnect", connObj)
         end
     end
+end
+
+function Connection:GetConnectionsByTag(tag)
+    assert(not self._Destroyed, "Cannot GetConnectionsByTag on a destroyed event")
+    assert(type(tag) == "string", "GetConnectionsByTag: expected string tag")
+
+    local matches = {}
+    for _, connObj in ipairs(self._Callbacks) do
+        if connObj.Connected and connObj.Tag == tag then
+            tableInsert(matches, connObj)
+        end
+    end
+
+    return matches
 end
 
 function Connection:Pause()
