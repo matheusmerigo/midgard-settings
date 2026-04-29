@@ -1,9 +1,7 @@
 return {
     Sea1 = {
-        PlaceIds = {
-            [130167267952199] = true,
-        },
         Bosses = {
+
             ["AizenBoss"] = { displayName = "Manipulator" },
             ["AlucardBoss"] = { displayName = "Vampire King" },
             ["AnosBoss"] = { displayName = "Demon King" },
@@ -33,10 +31,8 @@ return {
     },
 
     Sea2 = {
-        PlaceIds = {
-            [77747658251236] = true,
-        },
         Bosses = {
+
             ["CosmicBeingBoss"] = { displayName = "Cosmic Being" },
             ["TheWorldBoss"] = { displayName = "The World" },
         },
