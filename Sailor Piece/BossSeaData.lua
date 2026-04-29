@@ -28,6 +28,13 @@ return {
             ["YamatoBoss"] = { displayName = "Yamato" },
             ["YujiBoss"] = { displayName = "Cursed Vessel" },
         },
+        Dungeons = {
+            ["CidDungeon"] = { displayName = "Cid Dungeon" },
+            ["RuneDungeon"] = { displayName = "Rune Dungeon" },
+            ["DoubleDungeon"] = { displayName = "Double Dungeon" },
+            ["BossRush"] = { displayName = "Boss Rush" },
+            ["InfiniteTower"] = { displayName = "Infinite Tower" },
+        },
     },
 
     Sea2 = {
@@ -35,6 +42,9 @@ return {
 
             ["CosmicBeingBoss"] = { displayName = "Cosmic Being" },
             ["TheWorldBoss"] = { displayName = "The World" },
+        },
+        Dungeons = {
+            ["CrystalDefense"] = { displayName = "Crystal Defense" },
         },
     },
 }
