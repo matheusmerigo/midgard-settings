@@ -65,7 +65,7 @@ local coRunning = coroutine.running
 local coYield = coroutine.yield
 local coResume = coroutine.resume
 
--- Inserts a connection object by descending priority.
+-- Ordering / storage
 local function insertSorted(list, connObj)
     local priority = connObj._Priority
     for i, existing in ipairs(list) do
@@ -87,7 +87,7 @@ local function removeConnectionFromCallbacks(list, connObj)
     return false
 end
 
--- Executes a callback without allowing it to break the dispatch chain.
+-- Callback execution
 local function callSafe(fn, ...)
     local ok, err = pcall(fn, ...)
     if not ok then
@@ -95,17 +95,50 @@ local function callSafe(fn, ...)
     end
 end
 
--- Notifies optional listeners about connection lifecycle changes.
+local function invokeListener(safeMode, fn, spawnFn, packedArgs, ...)
+    if spawnFn then
+        spawnFn(function()
+            if safeMode then
+                callSafe(fn, tableUnpack(packedArgs))
+            else
+                fn(tableUnpack(packedArgs))
+            end
+        end)
+        return
+    end
+
+    if safeMode then
+        callSafe(fn, ...)
+    else
+        fn(...)
+    end
+end
+
+local function invokeCollectListener(safeMode, fn, ...)
+    if not safeMode then
+        return fn(...)
+    end
+
+    local ok, ret = pcall(fn, ...)
+    if not ok then
+        warn("[Connection] FireCollect callback error: " .. tostring(ret))
+    end
+    return ok and ret or nil
+end
+
+-- Lifecycle / tagging
 local function notifyConnectionChanged(event, kind, connObj)
     local handler = event.OnConnectionChanged
-    if type(handler) == "function" then
-        if event.ConnectionChangedDeferred == false then
+    if type(handler) ~= "function" then
+        return
+    end
+
+    if event.ConnectionChangedDeferred == false then
+        callSafe(handler, kind, connObj)
+    else
+        taskDefer(function()
             callSafe(handler, kind, connObj)
-        else
-            taskDefer(function()
-                callSafe(handler, kind, connObj)
-            end)
-        end
+        end)
     end
 end
 
@@ -148,7 +181,13 @@ local function removeTaggedConnection(event, connObj)
     end
 end
 
--- Removes a pending waiter from the waiter list.
+local function destroyConnectionObject(connObj)
+    connObj.Connected = false
+    connObj._Callback = nil
+    connObj._Parent = nil
+end
+
+-- Waiters
 local function removeWaiter(waiters, waiter)
     for i = #waiters, 1, -1 do
         if waiters[i] == waiter then
@@ -159,7 +198,6 @@ local function removeWaiter(waiters, waiter)
     return false
 end
 
--- Resumes a waiter only once, even if multiple paths race.
 local function resumeWaiter(waiter, ...)
     if waiter.Resumed then
         return
@@ -178,6 +216,20 @@ local function resumeWaiter(waiter, ...)
     end)
 end
 
+local function flushWaiters(self, ...)
+    if #self._Waiters == 0 then
+        return
+    end
+
+    local waiters = tableClone(self._Waiters)
+    tableClear(self._Waiters)
+
+    for _, waiter in ipairs(waiters) do
+        resumeWaiter(waiter, ...)
+    end
+end
+
+-- Connection objects
 local ConnectionObject = {}
 ConnectionObject.__index = ConnectionObject
 
@@ -196,11 +248,10 @@ function ConnectionObject:Disconnect()
         end
     end
 
-    self.Connected = false
-    self._Callback = nil
-    self._Parent = nil
+    destroyConnectionObject(self)
 end
 
+-- Event object
 local Connection = {}
 Connection.__index = Connection
 
@@ -294,21 +345,6 @@ function Connection:Wait(timeout)
     return coYield()
 end
 
--- Resumes all pending waiters with the provided payload.
-local function flushWaiters(self, ...)
-    if #self._Waiters == 0 then
-        return
-    end
-
-    local waiters = tableClone(self._Waiters)
-    tableClear(self._Waiters)
-
-    for _, waiter in ipairs(waiters) do
-        resumeWaiter(waiter, ...)
-    end
-end
-
--- Shared dispatcher for Fire variants.
 local function doFire(self, spawnFn, ...)
     if self._Destroyed or self._Paused then
         return
@@ -327,22 +363,7 @@ local function doFire(self, spawnFn, ...)
     if #callbacks == 1 then
         local connObj = callbacks[1]
         if connObj and connObj.Connected and connObj._Callback then
-            local fn = connObj._Callback
-            if spawnFn then
-                spawnFn(function()
-                    if safeMode then
-                        callSafe(fn, tableUnpack(args))
-                    else
-                        fn(tableUnpack(args))
-                    end
-                end)
-            else
-                if safeMode then
-                    callSafe(fn, ...)
-                else
-                    fn(...)
-                end
-            end
+            invokeListener(safeMode, connObj._Callback, spawnFn, args, ...)
         end
         return
     end
@@ -351,22 +372,7 @@ local function doFire(self, spawnFn, ...)
 
     for _, connObj in ipairs(snapshot) do
         if connObj.Connected and connObj._Callback then
-            local fn = connObj._Callback
-            if spawnFn then
-                spawnFn(function()
-                    if safeMode then
-                        callSafe(fn, tableUnpack(args))
-                    else
-                        fn(tableUnpack(args))
-                    end
-                end)
-            else
-                if safeMode then
-                    callSafe(fn, ...)
-                else
-                    fn(...)
-                end
-            end
+            invokeListener(safeMode, connObj._Callback, spawnFn, args, ...)
         end
     end
 end
@@ -407,16 +413,7 @@ function Connection:FireCollect(...)
     if #callbacks == 1 then
         local connObj = callbacks[1]
         if connObj and connObj.Connected and connObj._Callback then
-            local fn = connObj._Callback
-            if safeMode then
-                local ok, ret = pcall(fn, ...)
-                if not ok then
-                    warn("[Connection] FireCollect callback error: " .. tostring(ret))
-                end
-                results[1] = ok and ret or nil
-            else
-                results[1] = fn(...)
-            end
+            results[1] = invokeCollectListener(safeMode, connObj._Callback, ...)
         end
         return results
     end
@@ -425,16 +422,7 @@ function Connection:FireCollect(...)
 
     for _, connObj in ipairs(snapshot) do
         if connObj.Connected and connObj._Callback then
-            local fn = connObj._Callback
-            if safeMode then
-                local ok, ret = pcall(fn, ...)
-                if not ok then
-                    warn("[Connection] FireCollect callback error: " .. tostring(ret))
-                end
-                tableInsert(results, ok and ret or nil)
-            else
-                tableInsert(results, fn(...))
-            end
+            tableInsert(results, invokeCollectListener(safeMode, connObj._Callback, ...))
         end
     end
 
@@ -449,9 +437,7 @@ function Connection:DisconnectAll()
     local hadConnections = #self._Callbacks > 0
     for i = #self._Callbacks, 1, -1 do
         local connObj = self._Callbacks[i]
-        connObj.Connected = false
-        connObj._Callback = nil
-        connObj._Parent = nil
+        destroyConnectionObject(connObj)
         self._Callbacks[i] = nil
     end
     tableClear(self._TagIndex)
@@ -474,9 +460,7 @@ function Connection:DisconnectByTag(tag)
     for _, connObj in ipairs(taggedSnapshot) do
         removeConnectionFromCallbacks(self._Callbacks, connObj)
         if connObj.Connected then
-            connObj.Connected = false
-            connObj._Callback = nil
-            connObj._Parent = nil
+            destroyConnectionObject(connObj)
             notifyConnectionChanged(self, "disconnect", connObj)
         end
     end
@@ -593,8 +577,5 @@ function Connection.Create(names)
 
     return events
 end
-
-Connection.Version = "1.0.0"
-Connection.Channel = "stable"
 
 return Connection
