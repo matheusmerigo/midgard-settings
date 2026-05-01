@@ -26,6 +26,7 @@
       .MaxListeners                    -> number (0 = unlimited)
       .SafeMode                        -> boolean (pcall each callback)
       .OnConnectionChanged             -> fn(kind, connObj)?
+      .ConnectionChangedDeferred       -> boolean (default true)
 
     ConnectionObject API:
       .Connected                       -> boolean
@@ -88,7 +89,50 @@ end
 local function notifyConnectionChanged(event, kind, connObj)
     local handler = event.OnConnectionChanged
     if type(handler) == "function" then
-        taskDefer(handler, kind, connObj)
+        if event.ConnectionChangedDeferred == false then
+            handler(kind, connObj)
+        else
+            taskDefer(handler, kind, connObj)
+        end
+    end
+end
+
+local function addTaggedConnection(event, connObj)
+    local tag = connObj.Tag
+    if type(tag) ~= "string" then
+        return
+    end
+
+    local tagIndex = event._TagIndex
+    local bucket = tagIndex[tag]
+    if not bucket then
+        bucket = {}
+        tagIndex[tag] = bucket
+    end
+    bucket[#bucket + 1] = connObj
+end
+
+local function removeTaggedConnection(event, connObj)
+    local tag = connObj.Tag
+    if type(tag) ~= "string" then
+        return
+    end
+
+    local tagIndex = event._TagIndex
+    local bucket = tagIndex[tag]
+    if not bucket then
+        return
+    end
+
+    for i = #bucket, 1, -1 do
+        if bucket[i] == connObj then
+            tableRemove(bucket, i)
+            break
+        end
+    end
+
+    if #bucket == 0 then
+        tagIndex[tag] = nil
     end
 end
 
@@ -109,6 +153,10 @@ local function resumeWaiter(waiter, ...)
         return
     end
     waiter.Resumed = true
+    if waiter.TimeoutHandle then
+        task.cancel(waiter.TimeoutHandle)
+        waiter.TimeoutHandle = nil
+    end
     local args = { ... }
     taskSpawn(function()
         local ok, err = coResume(waiter.Thread, tableUnpack(args))
@@ -138,6 +186,7 @@ function ConnectionObject:Disconnect()
             end
         end
         if removed then
+            removeTaggedConnection(parent, self)
             notifyConnectionChanged(parent, "disconnect", self)
         end
     end
@@ -154,11 +203,13 @@ function Connection.new()
     return setmetatable({
         _Callbacks = {},
         _Waiters = {},
+        _TagIndex = {},
         _Destroyed = false,
         _Paused = false,
         MaxListeners = 0,
         SafeMode = false,
         OnConnectionChanged = nil,
+        ConnectionChangedDeferred = true,
     }, Connection)
 end
 
@@ -186,6 +237,7 @@ function Connection:Connect(callback, priority, tag)
     }, ConnectionObject)
 
     insertSorted(self._Callbacks, connObj)
+    addTaggedConnection(self, connObj)
     notifyConnectionChanged(self, "connect", connObj)
     return connObj
 end
@@ -224,7 +276,7 @@ function Connection:Wait(timeout)
     tableInsert(self._Waiters, waiter)
 
     if type(timeout) == "number" and timeout >= 0 then
-        taskDelay(timeout, function()
+        waiter.TimeoutHandle = taskDelay(timeout, function()
             if self._Destroyed then
                 return
             end
@@ -353,6 +405,7 @@ function Connection:DisconnectAll()
         connObj._Parent = nil
         self._Callbacks[i] = nil
     end
+    tableClear(self._TagIndex)
 
     if hadConnections then
         notifyConnectionChanged(self, "disconnect", nil)
@@ -363,16 +416,28 @@ function Connection:DisconnectByTag(tag)
     assert(not self._Destroyed, "Cannot DisconnectByTag on a destroyed event")
     assert(type(tag) == "string", "DisconnectByTag: expected string tag")
 
-    for i = #self._Callbacks, 1, -1 do
-        local connObj = self._Callbacks[i]
-        if connObj.Tag == tag then
-            tableRemove(self._Callbacks, i)
+    local bucket = self._TagIndex[tag]
+    if not bucket then
+        return
+    end
+
+    local taggedSnapshot = tableClone(bucket)
+    for _, connObj in ipairs(taggedSnapshot) do
+        for i = #self._Callbacks, 1, -1 do
+            if self._Callbacks[i] == connObj then
+                tableRemove(self._Callbacks, i)
+                break
+            end
+        end
+        if connObj.Connected then
             connObj.Connected = false
             connObj._Callback = nil
             connObj._Parent = nil
             notifyConnectionChanged(self, "disconnect", connObj)
         end
     end
+
+    self._TagIndex[tag] = nil
 end
 
 function Connection:GetConnectionsByTag(tag)
@@ -380,8 +445,13 @@ function Connection:GetConnectionsByTag(tag)
     assert(type(tag) == "string", "GetConnectionsByTag: expected string tag")
 
     local matches = {}
-    for _, connObj in ipairs(self._Callbacks) do
-        if connObj.Connected and connObj.Tag == tag then
+    local bucket = self._TagIndex[tag]
+    if not bucket then
+        return matches
+    end
+
+    for _, connObj in ipairs(bucket) do
+        if connObj.Connected then
             tableInsert(matches, connObj)
         end
     end
@@ -408,9 +478,11 @@ function Connection:Destroy()
     self._Destroyed = true
     self._Paused = true
     self.OnConnectionChanged = nil
+    self.ConnectionChangedDeferred = nil
 
     local waiters = tableClone(self._Waiters)
     tableClear(self._Waiters)
+    tableClear(self._TagIndex)
     for _, waiter in ipairs(waiters) do
         resumeWaiter(waiter, nil, "destroyed")
     end
@@ -435,7 +507,12 @@ function Connection:LinkToInstance(instance)
     assert(typeof(instance) == "Instance", "LinkToInstance: expected Instance, got " .. typeof(instance))
 
     local linked
+    local destroyed = false
     local function destroyLinked()
+        if destroyed then
+            return
+        end
+        destroyed = true
         if linked then
             linked:Disconnect()
             linked = nil
