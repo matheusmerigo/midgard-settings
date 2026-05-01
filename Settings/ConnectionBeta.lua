@@ -1,6 +1,6 @@
 --[[
     Connection.lua
-    Universal event/signal utility for Luau / Roblox.
+    Event utility for Luau / Roblox.
 
     Event API:
       :Connect(fn, priority?, tag?)    -> ConnectionObject
@@ -35,12 +35,9 @@
 
     Notes:
       - Higher priority runs first.
-      - Fire/FireDeferred use per-callback scheduling and clone callbacks for safe iteration.
-      - FireImmediate/FireCollect are synchronous.
-      - Waiters are resumed on Fire, timeout, or Destroy.
-      - Fire variants on destroyed events are no-op.
-      - SafeMode adds per-callback pcall overhead.
-      - LinkToInstance uses Destroying when available, then falls back to AncestryChanged.
+      - Fire and FireDeferred schedule per callback; FireImmediate and FireCollect run synchronously.
+      - Waiters resume on Fire, timeout, or Destroy.
+      - LinkToInstance prefers Destroying, then falls back to AncestryChanged.
 ]]
 
 local type = type
@@ -65,7 +62,6 @@ local coRunning = coroutine.running
 local coYield = coroutine.yield
 local coResume = coroutine.resume
 
--- Ordering / storage
 local function insertSorted(list, connObj)
     local priority = connObj._Priority
     for i, existing in ipairs(list) do
@@ -77,7 +73,7 @@ local function insertSorted(list, connObj)
     tableInsert(list, connObj)
 end
 
-local function removeConnectionFromCallbacks(list, connObj)
+local function removeCallback(list, connObj)
     for i = #list, 1, -1 do
         if list[i] == connObj then
             tableRemove(list, i)
@@ -87,7 +83,6 @@ local function removeConnectionFromCallbacks(list, connObj)
     return false
 end
 
--- Callback execution
 local function callSafe(fn, ...)
     local ok, err = pcall(fn, ...)
     if not ok then
@@ -95,7 +90,7 @@ local function callSafe(fn, ...)
     end
 end
 
-local function invokeListener(safeMode, fn, spawnFn, packedArgs, ...)
+local function dispatchCallback(safeMode, fn, spawnFn, packedArgs, ...)
     if spawnFn then
         spawnFn(function()
             if safeMode then
@@ -114,7 +109,7 @@ local function invokeListener(safeMode, fn, spawnFn, packedArgs, ...)
     end
 end
 
-local function invokeCollectListener(safeMode, fn, ...)
+local function collectCallback(safeMode, fn, ...)
     if not safeMode then
         return fn(...)
     end
@@ -126,7 +121,6 @@ local function invokeCollectListener(safeMode, fn, ...)
     return ok and ret or nil
 end
 
--- Lifecycle / tagging
 local function notifyConnectionChanged(event, kind, connObj)
     local handler = event.OnConnectionChanged
     if type(handler) ~= "function" then
@@ -181,13 +175,12 @@ local function removeTaggedConnection(event, connObj)
     end
 end
 
-local function destroyConnectionObject(connObj)
+local function clearConnection(connObj)
     connObj.Connected = false
     connObj._Callback = nil
     connObj._Parent = nil
 end
 
--- Waiters
 local function removeWaiter(waiters, waiter)
     for i = #waiters, 1, -1 do
         if waiters[i] == waiter then
@@ -241,17 +234,16 @@ function ConnectionObject:Disconnect()
     local parent = self._Parent
     local removed = false
     if parent and not parent._Destroyed then
-        removed = removeConnectionFromCallbacks(parent._Callbacks, self)
+        removed = removeCallback(parent._Callbacks, self)
         if removed then
             removeTaggedConnection(parent, self)
             notifyConnectionChanged(parent, "disconnect", self)
         end
     end
 
-    destroyConnectionObject(self)
+    clearConnection(self)
 end
 
--- Event object
 local Connection = {}
 Connection.__index = Connection
 
@@ -363,7 +355,7 @@ local function doFire(self, spawnFn, ...)
     if #callbacks == 1 then
         local connObj = callbacks[1]
         if connObj and connObj.Connected and connObj._Callback then
-            invokeListener(safeMode, connObj._Callback, spawnFn, args, ...)
+            dispatchCallback(safeMode, connObj._Callback, spawnFn, args, ...)
         end
         return
     end
@@ -372,7 +364,7 @@ local function doFire(self, spawnFn, ...)
 
     for _, connObj in ipairs(snapshot) do
         if connObj.Connected and connObj._Callback then
-            invokeListener(safeMode, connObj._Callback, spawnFn, args, ...)
+            dispatchCallback(safeMode, connObj._Callback, spawnFn, args, ...)
         end
     end
 end
@@ -413,7 +405,7 @@ function Connection:FireCollect(...)
     if #callbacks == 1 then
         local connObj = callbacks[1]
         if connObj and connObj.Connected and connObj._Callback then
-            results[1] = invokeCollectListener(safeMode, connObj._Callback, ...)
+            results[1] = collectCallback(safeMode, connObj._Callback, ...)
         end
         return results
     end
@@ -422,7 +414,7 @@ function Connection:FireCollect(...)
 
     for _, connObj in ipairs(snapshot) do
         if connObj.Connected and connObj._Callback then
-            tableInsert(results, invokeCollectListener(safeMode, connObj._Callback, ...))
+            tableInsert(results, collectCallback(safeMode, connObj._Callback, ...))
         end
     end
 
@@ -437,7 +429,7 @@ function Connection:DisconnectAll()
     local hadConnections = #self._Callbacks > 0
     for i = #self._Callbacks, 1, -1 do
         local connObj = self._Callbacks[i]
-        destroyConnectionObject(connObj)
+        clearConnection(connObj)
         self._Callbacks[i] = nil
     end
     tableClear(self._TagIndex)
@@ -458,9 +450,9 @@ function Connection:DisconnectByTag(tag)
 
     local taggedSnapshot = tableClone(bucket)
     for _, connObj in ipairs(taggedSnapshot) do
-        removeConnectionFromCallbacks(self._Callbacks, connObj)
+        removeCallback(self._Callbacks, connObj)
         if connObj.Connected then
-            destroyConnectionObject(connObj)
+            clearConnection(connObj)
             notifyConnectionChanged(self, "disconnect", connObj)
         end
     end
