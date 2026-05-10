@@ -42,10 +42,12 @@ return {
 
             ["CosmicBeingBoss"] = { displayName = "Cosmic Being" },
             ["SpiritWarriorBoss"] = { displayName = "Spirit Warrior" },
+            ["SunGodBoss"] = { displayName = "Sun God" },
             ["TheWorldBoss"] = { displayName = "The World" },
         },
         Dungeons = {
             ["CrystalDefense"] = { displayName = "Crystal Defense" },
+            ["Raid"] = { displayName = "Raid" },
         },
     },
 }
