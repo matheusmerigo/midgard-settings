@@ -41,6 +41,7 @@ return {
         Bosses = {
 
             ["CosmicBeingBoss"] = { displayName = "Cosmic Being" },
+            ["SpiritWarriorBoss"] = { displayName = "Spirit Warrior" },
             ["TheWorldBoss"] = { displayName = "The World" },
         },
         Dungeons = {
