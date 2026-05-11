@@ -35,6 +35,15 @@ return {
             ["BossRush"] = { displayName = "Boss Rush" },
             ["InfiniteTower"] = { displayName = "Infinite Tower" },
         },
+        Questlines = {
+            ["AncientFragment"] = { displayName = "Ancient Fragment" },
+            ["ConquerorHaki"] = { displayName = "Conqueror Haki" },
+            ["DemoniteCoreUnlock"] = { displayName = "Demonite Core" },
+            ["DungeonUnlock"] = { displayName = "Dungeon Unlock" },
+            ["Haki"] = { displayName = "Armament Haki" },
+            ["HogyokuUnlock"] = { displayName = "Hogyoku" },
+            ["SlimeCraftUnlock"] = { displayName = "Slime Craft Unlock" },
+        },
     },
 
     Sea2 = {
@@ -48,6 +57,9 @@ return {
         Dungeons = {
             ["CrystalDefense"] = { displayName = "Crystal Defense" },
             ["Raid"] = { displayName = "Raid" },
+        },
+        Questlines = {
+            ["Archangel"] = { displayName = "Archangel" },
         },
     },
 }
