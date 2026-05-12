@@ -53,6 +53,7 @@ local tableInsert = table.insert
 local tableClone = table.clone
 local tableClear = table.clear
 local tableUnpack = table.unpack
+local tablePack = table.pack
 
 local taskSpawn = task.spawn
 local taskDefer = task.defer
@@ -61,6 +62,17 @@ local taskDelay = task.delay
 local coRunning = coroutine.running
 local coYield = coroutine.yield
 local coResume = coroutine.resume
+
+local function packArgs(...)
+    if type(tablePack) == "function" then
+        return tablePack(...)
+    end
+    return { n = select("#", ...), ... }
+end
+
+local function unpackArgs(args)
+    return tableUnpack(args, 1, args.n or #args)
+end
 
 local function insertSorted(list, connObj)
     local priority = connObj._Priority
@@ -84,7 +96,10 @@ local function removeCallback(list, connObj)
 end
 
 local function callSafe(fn, ...)
-    local ok, err = pcall(fn, ...)
+    local args = packArgs(...)
+    local ok, err = xpcall(function()
+        return fn(unpackArgs(args))
+    end, debug.traceback)
     if not ok then
         warn("[Connection] Callback error: " .. tostring(err))
     end
@@ -94,9 +109,9 @@ local function dispatchCallback(safeMode, fn, spawnFn, packedArgs, ...)
     if spawnFn then
         spawnFn(function()
             if safeMode then
-                callSafe(fn, tableUnpack(packedArgs))
+                callSafe(fn, unpackArgs(packedArgs))
             else
-                fn(tableUnpack(packedArgs))
+                fn(unpackArgs(packedArgs))
             end
         end)
         return
@@ -200,9 +215,9 @@ local function resumeWaiter(waiter, ...)
         task.cancel(waiter.TimeoutHandle)
         waiter.TimeoutHandle = nil
     end
-    local args = { ... }
+    local args = packArgs(...)
     taskSpawn(function()
-        local ok, err = coResume(waiter.Thread, tableUnpack(args))
+        local ok, err = coResume(waiter.Thread, unpackArgs(args))
         if not ok then
             warn("[Connection] Wait resume error: " .. tostring(err))
         end
@@ -252,6 +267,7 @@ function Connection.new()
         _Callbacks = {},
         _Waiters = {},
         _TagIndex = {},
+        _Links = {},
         _Destroyed = false,
         _Paused = false,
         MaxListeners = 0,
@@ -349,7 +365,7 @@ local function doFire(self, spawnFn, ...)
     end
 
     local safeMode = self.SafeMode
-    local args = { ... }
+    local args = packArgs(...)
     local callbacks = self._Callbacks
 
     if #callbacks == 1 then
@@ -500,6 +516,14 @@ function Connection:Destroy()
     self.OnConnectionChanged = nil
     self.ConnectionChangedDeferred = nil
 
+    for i = #self._Links, 1, -1 do
+        local linked = self._Links[i]
+        self._Links[i] = nil
+        if linked and linked.Connected then
+            linked:Disconnect()
+        end
+    end
+
     local waiters = tableClone(self._Waiters)
     tableClear(self._Waiters)
     tableClear(self._TagIndex)
@@ -546,6 +570,7 @@ function Connection:LinkToInstance(instance)
 
     if ok and destroyingSignal then
         linked = destroyingSignal:Connect(destroyLinked)
+        tableInsert(self._Links, linked)
         return linked
     end
 
@@ -554,6 +579,7 @@ function Connection:LinkToInstance(instance)
             destroyLinked()
         end
     end)
+    tableInsert(self._Links, linked)
     return linked
 end
 
