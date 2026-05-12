@@ -427,10 +427,12 @@ function Connection:FireCollect(...)
     end
 
     local snapshot = tableClone(callbacks)
+    local resultIndex = 0
 
     for _, connObj in ipairs(snapshot) do
         if connObj.Connected and connObj._Callback then
-            tableInsert(results, collectCallback(safeMode, connObj._Callback, ...))
+            resultIndex += 1
+            results[resultIndex] = collectCallback(safeMode, connObj._Callback, ...)
         end
     end
 
