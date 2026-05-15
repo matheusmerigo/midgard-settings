@@ -35,6 +35,12 @@ return {
             ["BossRush"] = { displayName = "Boss Rush" },
             ["InfiniteTower"] = { displayName = "Infinite Tower" },
         },
+        Merchants = {
+            ["MerchantNPC"] = { displayName = "Merchant" },
+            ["Dungeon"] = { displayName = "Dungeon" },
+            ["BossRush"] = { displayName = "Boss Rush" },
+            ["InfiniteTower"] = { displayName = "Infinite Tower" },
+        },
         Questlines = {
             ["AncientFragment"] = { displayName = "Ancient Fragment" },
             ["ConquerorHaki"] = { displayName = "Conqueror Haki" },
@@ -55,6 +61,11 @@ return {
             ["TheWorldBoss"] = { displayName = "The World" },
         },
         Dungeons = {
+            ["CrystalDefense"] = { displayName = "Crystal Defense" },
+            ["Raid"] = { displayName = "Raid" },
+        },
+        Merchants = {
+            ["MerchantNPC"] = { displayName = "Merchant" },
             ["CrystalDefense"] = { displayName = "Crystal Defense" },
             ["Raid"] = { displayName = "Raid" },
         },
