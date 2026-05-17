@@ -9,7 +9,6 @@ return {
             ["BlessedMaidenBoss"] = { displayName = "Blessed Maiden" },
             ["GilgameshBoss"] = { displayName = "King of Heroes" },
             ["GojoBoss"] = { displayName = "Limitless Sorcerer" },
-            ["GreatMageBoss"] = { displayName = "Great Mage" },
             ["IceQueenBoss"] = { displayName = "Ice Queen" },
             ["IchigoBoss"] = { displayName = "Soul Reaper" },
             ["JinwooBoss"] = { displayName = "Solo Hunter" },
