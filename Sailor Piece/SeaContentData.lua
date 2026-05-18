@@ -55,10 +55,11 @@ return {
     Sea2 = {
         Bosses = {
 
-            ["CosmicBeingBoss"] = { displayName = "Cosmic Being" },
-            ["SpiritWarriorBoss"] = { displayName = "Spirit Warrior" },
+            ["TheWorldBoss"] = { displayName = "The World" },       
+            ["CosmicBeingBoss"] = { displayName = "Cosmic Being" },    
             ["SunGodBoss"] = { displayName = "Sun God" },
-            ["TheWorldBoss"] = { displayName = "The World" },
+            ["SpiritWarriorBoss"] = { displayName = "Spirit Warrior" },             
+            ["BlackReaperBoss"] = { displayName = "Black Reaper" },
         },
         Dungeons = {
             ["CrystalDefense"] = { displayName = "Crystal Defense" },
