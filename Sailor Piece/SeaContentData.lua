@@ -173,6 +173,11 @@ return {
             "StrongSlayer5",
             "GhoulMember5",
         },
+        SeaSummonPoints = {
+            { Island = "Slayer", CFrame = CFrame.new(-3540.7001953125, -8.301657676696777, -4701.72314453125) },
+            { Island = "BluePlanet", CFrame = CFrame.new(-5184.59912109375, -8.301657676696777, 501.6719055175781) },
+            { Island = "Punch", CFrame = CFrame.new(-1866.496337890625, -8.301657676696777, 3790.734130859375) },
+        },
         PuzzleData = {
             BloodFlower = {
                 { Island = "StarterSea2", CFrame = CFrame.new(-437.43304443359375, 85.17733001708984, -733.7615966796875) },
