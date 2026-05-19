@@ -45,10 +45,10 @@ return {
             ["AncientFragment"] = { displayName = "Ancient Fragment" },
             ["ConquerorHaki"] = { displayName = "Conqueror Haki" },
             ["DemoniteCoreUnlock"] = { displayName = "Demonite Core" },
-            ["DungeonUnlock"] = { displayName = "Dungeon Unlock" },
+            ["DungeonUnlock"] = { displayName = "Dungeon" },
             ["Haki"] = { displayName = "Armament Haki" },
             ["HogyokuUnlock"] = { displayName = "Hogyoku" },
-            ["SlimeCraftUnlock"] = { displayName = "Slime Craft Unlock" },
+            ["SlimeCraftUnlock"] = { displayName = "Slime Craft" },
         },
     },
 
@@ -71,7 +71,7 @@ return {
             ["Raid"] = { displayName = "Raid" },
         },
         Questlines = {
-            ["Archangel"] = { displayName = "Archangel" },
+            ["Archangel"] = { displayName = "Angel Halo" },
             ["BloodFlowerUnlock"] = { displayName = "Blood Flower" },
         },
     },
