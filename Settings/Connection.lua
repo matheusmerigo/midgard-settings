@@ -14,6 +14,7 @@
       :FireCollect(...)                -> { returns }
       :DisconnectAll()                 -> void
       :DisconnectByTag(tag)            -> void
+      :Configure(options)              -> self
       :Pause()                         -> void
       :Resume()                        -> void
       :Destroy()                       -> void
@@ -44,9 +45,15 @@ local type = type
 local assert = assert
 local warn = warn
 local pcall = pcall
+local xpcall = xpcall
+local tostring = tostring
+local error = error
+local select = select
+local typeof = typeof
 local ipairs = ipairs
 local setmetatable = setmetatable
 local stringFormat = string.format
+local debugTraceback = debug.traceback
 
 local tableRemove = table.remove
 local tableInsert = table.insert
@@ -58,6 +65,7 @@ local tablePack = table.pack
 local taskSpawn = task.spawn
 local taskDefer = task.defer
 local taskDelay = task.delay
+local taskCancel = task.cancel
 
 local coRunning = coroutine.running
 local coYield = coroutine.yield
@@ -99,7 +107,7 @@ local function callSafe(fn, ...)
     local args = packArgs(...)
     local ok, err = xpcall(function()
         return fn(unpackArgs(args))
-    end, debug.traceback)
+    end, debugTraceback)
     if not ok then
         warn("[Connection] Callback error: " .. tostring(err))
     end
@@ -196,6 +204,12 @@ local function clearConnection(connObj)
     connObj._Parent = nil
 end
 
+local function cancelTask(handle)
+    if handle and type(taskCancel) == "function" then
+        pcall(taskCancel, handle)
+    end
+end
+
 local function removeWaiter(waiters, waiter)
     for i = #waiters, 1, -1 do
         if waiters[i] == waiter then
@@ -212,7 +226,7 @@ local function resumeWaiter(waiter, ...)
     end
     waiter.Resumed = true
     if waiter.TimeoutHandle then
-        task.cancel(waiter.TimeoutHandle)
+        cancelTask(waiter.TimeoutHandle)
         waiter.TimeoutHandle = nil
     end
     local args = packArgs(...)
@@ -262,8 +276,29 @@ end
 local Connection = {}
 Connection.__index = Connection
 
-function Connection.new()
-    return setmetatable({
+function Connection:Configure(options)
+    if type(options) ~= "table" then
+        return self
+    end
+
+    if options.MaxListeners ~= nil then
+        self.MaxListeners = math.max(tonumber(options.MaxListeners) or 0, 0)
+    end
+    if options.SafeMode ~= nil then
+        self.SafeMode = options.SafeMode == true
+    end
+    if options.ConnectionChangedDeferred ~= nil then
+        self.ConnectionChangedDeferred = options.ConnectionChangedDeferred ~= false
+    end
+    if type(options.OnConnectionChanged) == "function" then
+        self.OnConnectionChanged = options.OnConnectionChanged
+    end
+
+    return self
+end
+
+function Connection.new(options)
+    local event = setmetatable({
         _Callbacks = {},
         _Waiters = {},
         _TagIndex = {},
@@ -275,6 +310,7 @@ function Connection.new()
         OnConnectionChanged = nil,
         ConnectionChangedDeferred = true,
     }, Connection)
+    return event:Configure(options)
 end
 
 function Connection:Connect(callback, priority, tag)
@@ -585,14 +621,14 @@ function Connection:LinkToInstance(instance)
     return linked
 end
 
-function Connection.Create(names)
+function Connection.Create(names, options)
     assert(type(names) == "table", "Connection.Create: expected table of names")
 
     local events = {}
     for _, name in ipairs(names) do
         assert(type(name) == "string", "Connection.Create: all names must be strings")
         assert(not events[name], stringFormat("Connection.Create: duplicate event name %q", name))
-        events[name] = Connection.new()
+        events[name] = Connection.new(options)
     end
 
     return events
