@@ -172,6 +172,8 @@ return {
             "SpiritFighter5",
             "StrongSlayer5",
             "GhoulMember5",
+            "Sea2QuincyMember2",
+            "Disciple2",
         },
         SeaSummonPoints = {
             { Island = "Slayer", CFrame = CFrame.new(-3540.7001953125, -8.301657676696777, -4701.72314453125) },
@@ -221,10 +223,13 @@ return {
             ["SunGodBoss"] = { displayName = "Sun God" },
             ["SpiritWarriorBoss"] = { displayName = "Spirit Warrior" },             
             ["BlackReaperBoss"] = { displayName = "Black Reaper" },
+            ["RukiaBoss"] = { displayName = "Frost Empress" },
+            ["GilgameshV2Boss"] = { displayName = "King of Heroes V2" },
         },
         Dungeons = {
             ["CrystalDefense"] = { displayName = "Crystal Defense" },
-            ["Raid"] = { displayName = "Raid" },
+            ["Raid"] = { displayName = "Minotaur Raid" },
+            ["LightRaid"] = { displayName = "Light Raid" },
         },
         Merchants = {
             ["MerchantNPC"] = { displayName = "Merchant" },
